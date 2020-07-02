@@ -2,7 +2,7 @@
 # Overall pipeline
 
 # stage: seed
-name: Training_Example_2
+name: Training_Example_0
 data_storage_path: /data/storage/path/  # Change this name to be more descriptive
 
 #_________________
@@ -23,7 +23,7 @@ nb_hidden: 512
 emb_dim: 8
 batch_size: 2000
 lr_start: 0.001
-max_nb_epochs: 800
+max_nb_epochs: 20
 
 #_________________
 # Doublet building
@@ -73,7 +73,7 @@ doublet:
         weight_decay: 0.0001
 
     training:
-        n_total_epochs: 90
+        n_total_epochs: 20
 
 triplet:
     resume: False
@@ -103,5 +103,5 @@ triplet:
         weight_decay: 0.0001
 
     training:
-        n_total_epochs: 90
+        n_total_epochs: 20
 

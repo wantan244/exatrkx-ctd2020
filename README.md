@@ -58,11 +58,11 @@ To run the full pipeline to build seeds from TrackML data contained in `/path/to
 
 #### a. Run training pipeline
 
-Train the models yourself by including the TrackML and data storage paths in `GraphLearning/configs/pipeline_train.yaml`, then run
+Train the models yourself by including the TrackML and data storage paths in `GraphLearning/configs/pipeline_train_example.yaml`, then run
 ```
-python pipeline.py GraphLearning/configs/pipeline_train.yaml train
+python pipeline.py GraphLearning/configs/pipeline_train_example.yaml train
 ```
-to get model artifacts saved into the folder `data/storage/path/artifacts/Training_Example`, which can be pointed to in the next step. To see the performance of the training, you can create some visualisations, as described below in **Performance**.
+to get model artifacts saved into the folder `data/storage/path/artifacts/Training_Example_0`, which can be pointed to in the next step. To see the performance of the training, you can create some visualisations, as described below in **Performance**.
 
 #### b. Download model artifacts
 
@@ -100,7 +100,7 @@ evaluate_gnn GraphLearning/configs/pipeline_train.yaml GraphLearning/results/exa
 ```
 to produce a set of metrics for the doublet and triplet GNNs. The first argument is the config file used to train the artifacts, and the second is the name of the file to save plots to. The metrics produced include ROC curves, true/false histograms, and training performance such as loss and accuracy over each epoch.
 
-### Seeding Performance
+<!-- ### Seeding Performance
 Run
 ```
 evaluate_seeds Seedings/configs/seed_example.yaml Seedings/results/example_output.pdf
@@ -112,7 +112,7 @@ Run
 ```
 evaluate_labels Labelling/configs/label_example.yaml Labelling/results/example_output.pdf
 ```
-to output the TrackML score for the labels produced by the config file given as the first argument.
+to output the TrackML score for the labels produced by the config file given as the first argument. -->
 
 ---------------------
 

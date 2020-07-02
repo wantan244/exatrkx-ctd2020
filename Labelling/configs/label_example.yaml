@@ -1,20 +1,20 @@
 #_________________
 # Overall pipeline
 
-name: Labelling_Example
+name: Classify_Example_0
 data_storage_path: /data/storage/path/  
+artifacts_name: Training_Example_0
 
 #_________________
 # Preprocessing
 
 raw_data_path: /path/to/trackml/train_100_events
 detector_path: /path/to/trackml/detectors.csv
-pt_cut: 0
+pt_cut: 1
 
 #_________________
 # Doublet building
 
-artifact_storage_path: /path/to/artifacts
 emb_radius: 0.4 # This is the radius~threshold of the embedded neighborhood
 filter_threshold: 0.95  # This is the threshold of the metric filter
 num_phi_sections: 8
