@@ -15,6 +15,7 @@ import pandas as pd
 import sklearn.metrics
 import torch
 from torch.utils.data import Subset, DataLoader
+from torch_geometric.data import Batch
 
 # Locals
 from GraphLearning.src.models import get_model
@@ -66,9 +67,18 @@ def load_model(config, reload_epoch):
 def get_dataset(config):
     return HitGraphDataset(get_input_dir(config))
 
-def get_test_data_loader(config, n_test=16, batch_size=1):
+def get_dataset_from_pipeline(config, gnn):
+    data_dir = os.path.expandvars(config['data_storage_path'])
+    training_dir = os.path.join(data_dir, "train", config['name'], gnn+"_graphs")
+        
+    return HitGraphDataset(training_dir)
+
+def get_test_data_loader(config, n_test=16, gnn=None, batch_size=1):
     # Take the test set from the back
-    full_dataset = get_dataset(config)
+    if gnn is None:
+        full_dataset = get_dataset(config)
+    else:
+        full_dataset = get_dataset_from_pipeline(config, gnn)
     test_indices = len(full_dataset) - 1 - torch.arange(n_test)
     test_dataset = Subset(full_dataset, test_indices.tolist())
     full_filelist = full_dataset.get_filelist()
@@ -183,12 +193,12 @@ def create_train_history(summaries, figsize=(12, 10), loss_yscale='linear'):
 
     return axs, fig
 
-def plot_metrics(preds, targets, metrics, roc_scale="linear", tf_scale='linear')
+def plot_metrics(preds, targets, metrics, roc_scale="linear", tf_scale='linear'):
     
     axs, fig = create_metrics(preds, targets, metrics, roc_scale, tf_scale)
     plt.tight_layout()
     
-def save_metrics(summaries, output_dir, name, preds, targets, metrics, format="pdf", roc_scale="linear", tf_scale='linear')
+def save_metrics(summaries, output_dir, name, preds, targets, metrics, format="pdf", roc_scale="linear", tf_scale='linear'):
     
     axs, fig = create_metrics(preds, targets, metrics, roc_scale, tf_scale)
     output_name = os.path.join(output_dir, name+'_metrics.'+format)

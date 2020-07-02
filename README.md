@@ -46,7 +46,7 @@ pip install cupy
 
 ## Directory Structure
 
-An entire `classify` or `train` pipeline can be run from the root directory using the `pipeline.py` script. Stages of these pipelines will produce either `classify/` or `train/` and `artifacts/` data in your `data/storage/path` directory.
+An entire `classify` or `train` pipeline can be run from the root directory using the `pipeline.py` script, with a run name, e.g. `Test_Run`. Stages of these pipelines will produce either `classify/Test_Run/` or `train/Test_Run/` and `artifacts/Test_Run/` data in your `data/storage/path` directory.
 
 --------------------
 
@@ -70,7 +70,7 @@ These four folders (embedding, filter, doublet GNN & triplet GNN) can be downloa
 
 ### 2. Make config file
 
-Assuming the artifacts have been trained or downloaded and stored in `/artifact/storage/path/[metric_learning_emb, metric_learning_filter, doublet_gnn, triplet_gnn]`, we alter a config file to point to `/artifact/storage/path`, as well as intermediate data and final seed data in `/data/storage/path/`. To differentiate this run, we give it a name. An example config file `seed_example.yaml` with the inference run name "Seeding_Example" is in [the seed config folder](Seeding/configs). 
+Assuming the artifacts have been trained or downloaded and stored in `/data/storage/path/`, we alter a config file to point to `/data/storage/path`, as well as specify the name of the training run as `artifacts_name`. We also give this inference run a name that can be different to the training run. An example config file `seed_example.yaml` with the inference run name "Seeding_Example" is in [the seed config folder](Seeding/configs). 
 
 ### 3. Run inference
 

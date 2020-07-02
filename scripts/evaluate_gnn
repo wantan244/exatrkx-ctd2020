@@ -79,22 +79,22 @@ def main(args):
     
     n_test = 16 # CHANGE THIS 80
     
-    test_loader_doublet, _ = get_test_data_loader(config['doublet'], n_test=n_test)
+    test_loader_doublet, _ = get_test_data_loader(config, n_test=n_test, gnn="doublet")
     test_preds_doublet, test_targets_doublet = trainer_doublet.device_predict(test_loader_doublet)
     test_metrics_doublet = compute_metrics(test_preds_doublet, test_targets_doublet)
-    save_metrics(summaries_doublet, output_dir, 'doublet', test_preds_doublet, test_targets_doublet, test_metrics_doublet, roc_scale="log")
     
-    test_loader_triplet, _ = get_test_data_loader(config['triplet'], n_test=n_test)
-    test_preds_triplet, test_targets_triplet = trainer_doublet.device_predict(test_loader_triplet)
+    test_loader_triplet, _ = get_test_data_loader(config, n_test=n_test, gnn="triplet")
+    test_preds_triplet, test_targets_triplet = trainer_triplet.device_predict(test_loader_triplet)
     test_metrics_triplet = compute_metrics(test_preds_triplet, test_targets_triplet)
-    save_metrics(summaries_triplet, output_dir, 'doublet', test_preds_triplet, test_targets_triplet, test_metrics_triplet, roc_scale="log")
     
     # Visualisations
     output_dir = os.path.join(args.results_dir, config['name'])
     os.makedirs(output_dir, exist_ok = True)
     
-    training_plots_doublet = save_train_history(summaries_doublet, output_dir, 'doublet')
+    save_metrics(summaries_doublet, output_dir, 'doublet', test_preds_doublet, test_targets_doublet, test_metrics_doublet, roc_scale="log")
+    save_metrics(summaries_triplet, output_dir, 'triplet', test_preds_triplet, test_targets_triplet, test_metrics_triplet, roc_scale="log")    
     
+    training_plots_doublet = save_train_history(summaries_doublet, output_dir, 'doublet')    
     training_plots_triplet = save_train_history(summaries_triplet, output_dir, 'triplet')
     
     

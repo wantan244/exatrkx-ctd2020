@@ -203,7 +203,7 @@ def get_one_event(event_path,
                   include_noise,
                   pt_cut):
 
-    print("Loading event {} with a {} pT cut".format(event_path, pt_cut))
+#     print("Loading event {} with a {} pT cut".format(event_path, pt_cut))
     hits, cells, particles, truth = trackml.dataset.load_event(event_path)
     pt = np.sqrt(particles.px**2 + particles.py**2 + particles.pz**2)
     particles = particles.assign(pt=pt)
@@ -256,9 +256,8 @@ def preprocess_one_event(event_path,
                          force):
     i, event_path = event_path
     if (i%10)==0:
-        print("{:5d}".format(i))
+        print("{:5d} events processed".format(i))
     event_name = event_path.split('/')[-1]
-    print(event_name)
     preproc_file = os.path.join(preproc_path, "{}.pickle".format(event_name))
     if not os.path.exists(preproc_file) or force:
         try:
