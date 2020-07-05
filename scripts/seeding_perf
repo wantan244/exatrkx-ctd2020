@@ -1,0 +1,224 @@
+#!/usr/bin/env python
+"""
+Calculate the efficiency and purity of seed candidates.
+Plot the eta and pT distributions of the input hits,
+as well as the efficiency as a function of pT and eta.
+
+good_particles: 
+    1) has at least 3 hits in different layers 
+    2)  has minimum number of hits
+matched_particles:
+    1) at least one seed is matched to that particle
+
+efficiency = n_matched_particles / n_good_particles
+
+purity = n_seeds_with_all-hits-from-the-same-particle / n_seeds
+"""
+import os
+import sys
+import argparse
+import pickle
+import glob
+import pandas as pd
+import numpy as np
+import collections
+import matplotlib.pyplot as plt
+#plt.rc('text', usetex=True)
+#plt.rc('font', family='serif')
+from more_itertools import pairwise
+
+sys.path.append('..')
+from utils import event as master
+from utils import triplet
+
+def ratio_error(a, b, in_percentage=False):
+    ratio = a/b
+    if in_percentage:
+        ratio *= 100
+    error = ratio * math.sqrt((a+b)/(a*b))
+    return ratio, error
+
+def get_ratio(x_vals, y_vals):
+    res = [x/y if y!=0 else 0.0 for x,y in zip(x_vals, y_vals)]
+    return res[1:]
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='calculate seeding efficiency')
+    add_arg = parser.add_argument
+    add_arg('candiate',  help="seeding candidates")
+    add_arg('output',  help="output name")
+    add_arg('-d', '--data',  help="original tracking ML data",
+            default='/global/project/projectdirs/m3443/usr/xju/heptrkx/codalab/inputs/train_all')
+    # minimum number of hits for a particle to be a good(reconstructable) particle
+    add_arg('--min-hits', type=int,
+        help='minimum number of hits for a particle to be reconstructable', default=5)
+    # apply the same hit selections as that applied when making the seeds
+    # then only use these hits to define the "total true particles"
+    add_arg('--no-noise', action='store_true', help='Exclude noise hits')
+    add_arg('--eta-cut', default=5.0, type=float, help='eta threshold')
+    add_arg('--layers', nargs='?',
+            help='use hits in the specific layers', default=None, const='7,8,9')
+    add_arg('-v', '--verbose', action='store_true', help='print debug info')
+    add_arg('--redo', help='re-analyze the inputs', action='store_true')
+
+    args = parser.parse_args()
+    seed_candidates = args.candiate
+    data_input_dir = args.data
+    output = args.output
+    verbose = args.verbose
+
+    if args.layers is not None:
+        layers = [int(x) for x in args.layers.split(',')]
+        print("select hits in following layers\n", layers)
+    else:
+        layers = None
+
+    df_seed = triplet.read_triplets(seed_candidates)
+    evt_list = np.unique(df_seed.evtid)
+    tot_evts = evt_list.shape[0]
+    print("Total {} events".format(tot_evts))
+    if tot_evts < 1:
+        exit(1)
+
+    outname = output+'.h5'
+    if os.path.exists(outname) and not args.redo:
+        print("output {} is there, use --redo to update the results".format(outname))
+        with pd.HDFStore(outname, 'r') as store:
+            df_summary = store['summary']
+            df_tot = store['tot']
+            df_matched = store['matched']
+    else:
+        summary_info = collections.defaultdict(list)
+        tot_df = []
+        matched_df = []
+        event = master.Event(data_input_dir)
+        for evtid in evt_list:
+            if verbose:
+                print("Processing Event {}".format(evtid))
+
+            df = df_seed[df_seed.evtid == evtid]
+            if not event.read(evtid):
+                print("event {} does not have truth info".format(evtid))
+                continue
+
+            event.select_hits(args.no_noise, eta_cut=args.eta_cut)
+
+            summary, df_matched, df_tot = triplet.evaluate_evt(
+                event, df, min_hits=args.min_hits, layers=layers, verbose=verbose
+            )
+            tot_df.append(df_tot)
+            matched_df.append(df_matched)
+            for key, value in summary.items():
+                summary_info[key].append(value)
+
+        # summarize
+        # columns=['evtid', 'n_hits', 'n_particles',
+        # 'n_matched_particles', 'n_seeds', 'n_true_seeds_dup', 'n_true_seeds']
+        df_summary = pd.DataFrame.from_dict(summary_info)
+        df_tot = pd.concat(tot_df)
+        df_matched = pd.concat(matched_df)
+
+        # save the info
+        with pd.HDFStore(output+".h5", 'w') as store:
+            store['summary'] = df_summary
+            store['tot'] = df_tot
+            store['matched'] = df_matched
+
+    tot_particles = np.sum(df_summary.n_particles)
+    tot_matched_particles = np.sum(df_summary.n_matched_particles)
+    tot_seeds = np.sum(df_summary.n_seeds)
+    tot_true_seeds = np.sum(df_summary.n_true_seeds)
+    tot_true_seeds_tot = np.sum(df_summary.n_true_seeds_dup)
+
+    print("Summary")
+    print("Total {} events".format(tot_evts))
+    print("On average: {:.1f} hits per event and {:.1f} particles per event".format(
+        np.sum(df_summary.n_hits)/tot_evts,
+        np.sum(df_summary.n_particles)/tot_evts,
+        ))
+    print("On average: {:.1f} seeds per event. \n\t{:.1f} ({:.2f}%) true seeds, "
+          "\n\t{:.1f} ({:.2f}%) true seeds after removing seeds with two hits being the same layer"
+          "\n\ta factor of {:.1f} duplicated seeds".format(
+            tot_seeds/tot_evts, 
+            tot_true_seeds_tot/tot_evts, 100*tot_true_seeds_tot/tot_seeds,
+            tot_true_seeds/tot_evts, 100*tot_true_seeds/tot_seeds,
+            tot_true_seeds/tot_matched_particles,
+            ))
+    print("Purity: {:.2f} +/- {:.3f}%".format(*ratio_error(tot_true_seeds, tot_seeds, True)))
+    print("Efficiency: {:.2f} +/- {:.3f}%".format(*ratio_error(tot_matched_particles, tot_particles, True)))
+
+
+    tot_pt = df_tot.pt.values
+    matched_pt = df_matched.pt.values
+    tot_eta = df_tot.peta.values
+    matched_eta = df_matched.peta.values
+
+
+    pT_bins = [-0.1, 0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.5, 1.9, 2.4, 5]
+    eta_bins = [-5, -3, -2.4, -2.0, -1.6, -1.2, -0.8, -0.4, 0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 3, 5]
+    # efficiency as function of pT
+    hist_configs = {
+        'bins': pT_bins,
+        'histtype': 'step',
+        'lw': 2,
+        'log': True
+    }
+    fig, ax = plt.subplots(figsize=(8, 8), constrained_layout=True)
+    tot_vals, bins, _ = ax.hist(tot_pt, label='total', **hist_configs)
+    sel_vals, bins, _ = ax.hist(matched_pt, label='selected', **hist_configs)
+    plt.xlabel("pT [GeV]")
+    plt.ylabel("number of particles")
+    plt.legend()
+    plt.savefig(output+"_pT.png", bbox_inches='tight', dpi=300)
+    plt.savefig(output+"_pT.pdf", bbox_inches='tight', dpi=300)
+    plt.clf()
+
+    ratio = get_ratio(sel_vals, tot_vals)
+    xvals = [0.5*(x[0]+x[1]) for x in pairwise(bins)][1:]
+    line_configs = {'lw': 2}
+    lstype = '-o'
+    plt.plot(xvals, ratio, lstype, **line_configs)
+    #for i,j in zip(xvals, ratio):
+    #    plt.text(i, j*1.05, "{:.2f}".format(j))
+
+    plt.xlabel("pT [GeV]")
+    plt.ylabel("Seeding efficiency")
+    plt.ylim(0.80, 0.95)
+    plt.grid(axis='y')
+    plt.savefig(output+"_eff_pT.png", bbox_inches='tight', dpi=300)
+    plt.savefig(output+"_eff_pT.pdf", bbox_inches='tight', dpi=300)
+    plt.clf()
+
+    ## make eta bins
+    hist_configs = {
+        'bins': eta_bins,
+        'histtype': 'step',
+        'lw': 2,
+        'log': True,
+        "range": (-5, 5),
+    }
+    fig, ax = plt.subplots(figsize=(8, 8), constrained_layout=True)
+    tot_vals, bins, _ = ax.hist(tot_eta, label='total', **hist_configs)
+    sel_vals, bins, _ = ax.hist(matched_eta, label='selected', **hist_configs)
+    plt.legend()
+    plt.savefig(output+"_eta.png", bbox_inches='tight', dpi=300)
+    plt.savefig(output+"_eta.pdf", bbox_inches='tight', dpi=300)
+    plt.clf()
+
+    ratio = get_ratio(sel_vals, tot_vals)
+    xvals = [0.5*(x[0]+x[1]) for x in pairwise(bins)][1:]
+    line_configs = {'lw': 2}
+    lstype = '-o'
+    plt.plot(xvals, ratio, lstype, **line_configs)
+    #for i,j in zip(xvals, ratio):
+    #    plt.text(i, j*1.05, "{:.2f}".format(j))
+
+    plt.xlabel(r'$\eta$')
+    plt.ylabel("Seeding Efficiency")
+    plt.ylim(0.4, 1.00)
+    plt.xlim(-3, 3)
+    plt.grid(axis='y')
+    plt.savefig(output+"_eff_eta.png", bbox_inches='tight', dpi=300)
+    plt.savefig(output+"_eff_eta.pdf", bbox_inches='tight', dpi=300)
+    plt.clf()
