@@ -1,0 +1,109 @@
+#!/usr/bin/env python
+
+# TAKE IN CONFIG FILE & OUTPUT FILE NAME
+
+
+# System imports
+import os
+import sys
+
+# External imports
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import argparse
+
+# Pick up local packages
+sys.path.append('..')
+
+# Local imports
+from utils.data_utils import load_config_file
+
+def get_output_dirs(config):
+    data_dir = os.path.expandvars(config['data_storage_path'])
+    artifact_dir = os.path.join(data_dir, "artifacts", config['name'])
+    emb_artifacts = os.path.join(artifact_dir, "metric_learning_emb")
+    filter_artifacts = os.path.join(artifact_dir, "metric_learning_filter")
+    return emb_artifacts, filter_artifacts
+
+def load_summaries(config):
+    emb_artifacts, filter_artifacts = get_output_dirs(config)
+    emb_summary_file = os.path.join(emb_artifacts, 'training_stats.csv')
+    filter_summary_file = os.path.join(filter_artifacts, 'training_stats.csv')
+    return pd.read_csv(emb_summary_file), pd.read_csv(filter_summary_file)
+
+def parse_args():
+    """Parse command line arguments."""
+    hpo_warning = 'Flag overwrites config value if set, used for HPO and PBT runs primarily'
+    parser = argparse.ArgumentParser('train.py')
+    add_arg = parser.add_argument
+    add_arg('config', nargs='?', default='GraphLearning/configs/myconfig.yaml')
+    add_arg('results_dir', nargs='?', default='GraphLearning/results/withnoise')
+    
+    return parser.parse_args()
+
+def save_train_history(summaries, output_dir, name, format="pdf", figsize=(12, 5), loss_yscale='linear'):
+    
+    axs, fig = create_train_history(summaries, figsize, loss_yscale)
+    
+    output_name = os.path.join(output_dir, name+'_train_history.'+format)
+    
+    fig.savefig(output_name, format=format)
+
+def create_train_history(summaries, figsize=(12, 5), loss_yscale='linear'):
+    fig, axs = plt.subplots(nrows=1, ncols=2, figsize=figsize)
+    axs = axs.flatten()
+
+    # Plot losses
+    axs[0].plot(summaries.epoch, summaries.train_loss, label='Train')
+    axs[0].plot(summaries.epoch, summaries.valid_loss, label='Validation')
+    axs[0].set_yscale(loss_yscale)
+    axs[0].set_xlabel('Epoch')
+    axs[0].set_ylabel('Loss')
+    axs[0].set_ylim(bottom=0)
+    axs[0].legend(loc=0)
+
+    # Plot scores
+    axs[1].plot(summaries.epoch, summaries.train_score, label='Train')
+    axs[1].plot(summaries.epoch, summaries.valid_score, label='Validation')
+    axs[1].set_yscale(loss_yscale)
+    axs[1].set_xlabel('Epoch')
+    axs[1].set_ylabel('Score')
+    axs[1].set_ylim(top=100)
+    axs[1].legend(loc=0)
+
+    return axs, fig
+
+
+def main(args):
+    config_file = args.config
+
+    config = load_config_file(config_file)
+    print('\nConfiguration: \n', config)
+
+    summaries_emb, summaries_filter = load_summaries(config)
+    
+    summaries_emb.columns = ['epoch', 'lr', 'train_loss', 'train_score', 'valid_loss', 'valid_score']
+    summaries_filter.columns = ['epoch', 'lr', 'train_loss', 'train_score', 'valid_loss', 'valid_score']
+    
+    print('\nDoublet training summaries: \n', summaries_emb)
+    print('\nTriplet training summaries: \n', summaries_filter)
+
+    artifact_dir_emb, artifact_dir_filter = get_output_dirs(config)
+    
+    # Visualisations
+    output_dir = os.path.join(args.results_dir, config['name'])
+    os.makedirs(output_dir, exist_ok = True)
+    
+    training_plots_emb = save_train_history(summaries_emb, output_dir, 'emb')    
+    training_plots_filter = save_train_history(summaries_filter, output_dir, 'filter')
+    
+    
+    
+    
+if __name__ == '__main__':
+    
+    # Parse the command line
+    args = parse_args()
+    
+    main(args)
