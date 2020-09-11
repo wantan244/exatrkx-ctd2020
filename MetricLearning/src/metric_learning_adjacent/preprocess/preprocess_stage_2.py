@@ -222,6 +222,7 @@ def build_pairs(hits,
                 layers,
                 nb_particles_per_sample=2000):
     unique_pids = list(set(particle_ids))
+    unique_pids.remove(0)
     pids = np.array(particle_ids)
     shuffle(unique_pids)
     hits_a = []
