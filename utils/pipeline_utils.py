@@ -26,7 +26,8 @@ def parse_args():
                 'rank': 0,
                 'n_ranks': 1,
                 'verbose': False,
-                'resume': False
+                'resume': False,
+                'keep_noise': 0,
                 }
     
     if args.config_file is None:
@@ -58,7 +59,7 @@ def parse_args():
     add_arg('--nb-to-preprocess', help="How many subfolders of data", type=int)
     
     add_arg('--include-endcaps', help='Include endcaps', action='store_true') #The logic here is a little counter-intuitive to get the default to be endcaps removed (ditto noise)
-    add_arg('--include-noise', help='Include noise', action='store_true')
+    add_arg('--keep-noise', help='Keep noise', type=float)
     
     add_arg('--pt-cut', help='Transverse momentum, below which tracks are excluded', type=float)
     add_arg('--task', help='Which GPU number is this script running on', type=int, default=0)

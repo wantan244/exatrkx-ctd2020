@@ -20,7 +20,7 @@ BARREL_VOLUMES = [8, 13, 17]
 #############################################
 #               REDUCE TRACKS               #
 #############################################
-def remove_all_noise(hits, cells, truth):
+def remove_all_noises(hits, cells, truth):
     unique_ids = truth.particle_id.unique()
     track_ids_to_keep = unique_ids[np.where(unique_ids != 0)]
 
@@ -31,6 +31,27 @@ def remove_all_noise(hits, cells, truth):
 
     hit_ids_to_keep = truth_reduced.hit_id.values
     cells_reduced = cells[cells['hit_id'].isin(hit_ids_to_keep)]
+    return hits_reduced, cells_reduced, truth_reduced
+
+def remove_some_noise(hits, cells, truth, keep=1.0):
+    if keep == 1.0:
+        return hits, cells, truth
+    unique_ids = truth.particle_id.unique()
+    track_ids_to_keep = unique_ids[np.where(unique_ids != 0)]
+
+    where_to_keep = truth['particle_id'].isin(track_ids_to_keep)
+    hit_idx  = hits[where_to_keep].hit_id.values
+    
+    noise_hit_idx = hits[~where_to_keep].hit_id.values
+    if keep <= 0.0:
+        noise_hit_idx = []
+    else:
+        noise_hit_idx = np.random.permutation(noise_hit_idx)[:int(keep * noise_hit_idx.shape[0])]
+    hit_idx = np.concatenate([hit_idx, noise_hit_idx])
+        
+    hits_reduced  = hits[hits['hit_id'].isin(hit_idx)]
+    truth_reduced = truth[truth['hit_id'].isin(hit_idx)]
+    cells_reduced = cells[cells['hit_id'].isin(hit_idx)]
     return hits_reduced, cells_reduced, truth_reduced
 
 def remove_all_endcaps(hits, cells, truth):
@@ -45,9 +66,9 @@ def remove_all_endcaps(hits, cells, truth):
 
 def apply_pt_cut(hits, truth, cells, pt_cut=0):
     
-    hits_reduced = hits[truth.pt > pt_cut]
     truth_reduced = truth[truth.pt > pt_cut]
-    cells_reduced = cells[cells.hit_id.isin(hits_reduced.hit_id)]
+    hits_reduced = hits[hits.hit_id.isin(truth_reduced.hit_id)]
+    cells_reduced = cells[cells.hit_id.isin(truth_reduced.hit_id)]
     
     return hits_reduced, truth_reduced, cells_reduced
     
@@ -200,24 +221,25 @@ def get_one_event(event_path,
                   detector_orig,
                   detector_proc,
                   include_endcaps,
-                  include_noise,
+                  keep_noise,
                   pt_cut):
 
 #     print("Loading event {} with a {} pT cut".format(event_path, pt_cut))
     hits, cells, particles, truth = trackml.dataset.load_event(event_path)
     pt = np.sqrt(particles.px**2 + particles.py**2 + particles.pz**2)
     particles = particles.assign(pt=pt)
-
-    if not include_noise:
-        hits, cells, truth = remove_all_noise(hits, cells, truth)
+    hits, cells, truth = remove_some_noise(hits, cells, truth, keep_noise)
 
     if not include_endcaps:
         hits, cells, truth = remove_all_endcaps(hits, cells, truth)
-    truth = truth.merge(particles[['particle_id', 'pt']], on='particle_id')
+    
+    #truth = truth.merge(particles[['particle_id', 'pt']], on='particle_id')
     truth = truth.sort_values(by='hit_id')
-    truth = truth.set_index([truth['hit_id']-1])
-    hits, truth, cells = apply_pt_cut(hits, truth, cells, pt_cut)
-
+    truth = truth.reset_index()
+    truth = truth.drop('index', axis=1)
+    #truth = truth.set_index([truth['hit_id']-1])
+    #hits, truth, cells = apply_pt_cut(hits, truth, cells, pt_cut)
+    
     try:
         hits = augment_hit_features(hits, cells, detector_orig, detector_proc)
     except Exception as e:
@@ -233,6 +255,7 @@ def get_one_event(event_path,
 #########################################################
 def get_event_paths(data_path, data_dir_name):
     train_dir = os.path.join(data_path, data_dir_name)
+    print(train_dir) 
     event_names = [e.split('-')[0] for e in os.listdir(train_dir)]
     event_names = list(set(event_names))
     event_names.sort()
@@ -251,7 +274,7 @@ def preprocess_one_event(event_path,
                          detector_orig,
                          detector_proc,
                          include_endcaps,
-                         include_noise,
+                         keep_noise,
                          pt_cut,
                          force):
     i, event_path = event_path
@@ -265,14 +288,14 @@ def preprocess_one_event(event_path,
                                   detector_orig,
                                   detector_proc,
                                   include_endcaps,
-                                  include_noise,
+                                  keep_noise,
                                   pt_cut)
             save_preprocessed_event(event, preproc_path, preproc_file)
         except Exception as e:
             print(e)
             exit()
-    else:
-        print("File already exists at {}".format(preproc_file))
+    #else:
+        #print("File already exists at {}".format(preproc_file))
 
 def preprocess_with_threads(event_paths, preproc_path, percent_keep, detector, pt_cut):
     func = functools.partial(preprocess_one_event,
@@ -295,17 +318,18 @@ def preprocess_with_processes(event_paths,
                               detector_orig,
                               detector_proc,
                               include_endcaps,
-                              include_noise,
+                              keep_noise,
                               pt_cut,
                               force):
     event_paths = [(i,e) for i,e in enumerate(event_paths)]
+    print("filter noise with keep =", keep_noise)
     func = functools.partial(preprocess_one_event,
                              preproc_path=preproc_path,
                              percent_keep=percent_keep,
                              detector_orig=detector_orig,
                              detector_proc=detector_proc,
                              include_endcaps=include_endcaps,
-                             include_noise=include_noise,
+                             keep_noise=keep_noise,
                              pt_cut=pt_cut,
                              force=force)
     pool = ProcessPool(multiprocessing.cpu_count()) 
@@ -320,7 +344,7 @@ def preprocess_dataset(data_path,
                        n_tasks,
                        data_dir_name,
                        include_endcaps=True,
-                       include_noise=True,
+                       keep_noise=1.0,
                        force=False):
     '''
     Preprocess one dataset folder.
@@ -346,7 +370,7 @@ def preprocess_dataset(data_path,
                                   detector_orig,
                                   detector_proc,
                                   include_endcaps,
-                                  include_noise,
+                                  keep_noise,
                                   pt_cut,
                                   force)
     t1 = time.time()
@@ -376,7 +400,7 @@ def main(args,
                                args.n_tasks,
                                "",
                                args.include_endcaps,
-                               args.include_noise,
+                               args.keep_noise,
                                force)
         else:        
             nb_processed=0
@@ -389,7 +413,7 @@ def main(args,
                                    args.n_tasks,
                                    raw_name,
                                    args.include_endcaps,
-                                   args.include_noise,
+                                   args.keep_noise,
                                    force)
                 nb_processed+=1
                 if args.nb_to_process==-1:
