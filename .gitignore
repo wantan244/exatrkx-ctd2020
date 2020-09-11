@@ -2,3 +2,5 @@
 *pycache*
 *~
 *_mine.yaml*
+.ipynb_checkpoints/*
+*.pyc
