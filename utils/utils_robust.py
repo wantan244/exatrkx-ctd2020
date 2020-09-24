@@ -3,9 +3,9 @@ import os
 
 # Pick up local packages
 sys.path.append('..')
-sys.path.append('/global/homes/c/caditi97/exatrkx-ctd2020/MetricLearning/src/preprocess_with_dir/')
+sys.path.append('/global/homes/a/aoka/exatrkx-ctd2020/MetricLearning/src/preprocess_with_dir/')
 sys.path.append('..')
-sys.path.append('/global/homes/c/caditi97/exatrkx-ctd2020/MetricLearning/src/metric_learning_adjacent/')
+sys.path.append('/global/homes/a/aoka/exatrkx-ctd2020/MetricLearning/src/metric_learning_adjacent/')
 
 
 import time
@@ -45,18 +45,10 @@ from utils.data_utils import (get_output_dirs, load_config_file, load_config_dir
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-
-
-
-
-
-
+plt.style.use(['default', '/global/homes/a/aoka/style.mplstyle'])
 
 feature_names = ['x', 'y', 'z', 'cell_count', 'cell_val', 'leta', 'lphi', 'lx', 'ly', 'lz', 'geta', 'gphi']
 noise_keeps = ["0", "0.2", "0.4", "0.6", "0.8", "1"]
-
-
-
 
 #############################################
 #               GET DATA                    #
@@ -126,6 +118,82 @@ def remove_all_noise(hits, cells, truth, perc = 0.0):
 #                  PLOTS                    #
 #############################################
 
+# plot 3x2 graph that shows the purity & efficiency for embedding, filtering, and overall.
+def plot_metrics(emb_model, filter_model):
+    emb_ps, emb_efs, filter_ps, filter_efs, overall_ps, overall_efs \
+        = plot_purity_distribution(emb_model, filter_model)
+    fig, ((ax1, ax2), (ax3, ax4), (ax5, ax6)) = plt.subplots(3,2, figsize=(16,20))
+    x = [float(keep) for keep in noise_keeps]
+    ax1.plot(x, emb_ps)
+    ax1.set_title("embedding purity")
+    ax1.set_xlabel("noise_level")
+    ax2.plot(x, emb_efs)
+    ax2.set_title("embedding efficiency")
+    ax2.set_xlabel("noise_level")
+
+    ax3.plot(x, filter_ps)
+    ax3.set_title("filtering purity")
+    ax3.set_xlabel("noise_level")
+    ax4.plot(x, filter_efs)
+    ax4.set_title("filtering efficiency")
+    ax4.set_xlabel("noise_level")
+
+    ax5.plot(x, overall_ps)
+    ax5.set_title("overall purity")
+    ax5.set_xlabel("noise_level")
+    ax6.plot(x, overall_efs)
+    ax6.set_title("overall efficiency")
+    ax6.set_xlabel("noise_level")
+
+    plt.tight_layout()
+    plt.show()
+
+# plot purity distribution for embedding
+# returns purity & efficiency for embedding, filtering, overall for plot_metrics function
+def plot_purity_distribution(emb_model, filter_model):
+    emb_ps = []
+    emb_efs = []
+    filter_ps = []
+    filter_efs = []
+    overall_ps = []
+    overall_efs = []
+
+    fig, axes = plt.subplots(2, 3, figsize=(16,10))
+
+    for i, noise_keep in enumerate(noise_keeps):
+        event_name = "event000001000.pickle"
+        data_path = f"/global/cfs/cdirs/m3443/usr/aoka/data/classify/Classify_Example_{noise_keep}/preprocess_raw"
+        hits, truth = load_event(data_path, event_name)
+        print("event:", noise_keep, "number of hits:", len(hits))
+
+        neighbors = get_emb_neighbors(hits[feature_names].values, emb_model, 0.4)
+
+        emb_purity, emb_efficiency = get_emb_eff_purity(hits, truth, neighbors, only_adjacent=True)
+        axes[i//3][i%3].hist(emb_purity, 50, range=(0, 0.1))
+        emb_purity = sum(emb_purity)/len(emb_purity)
+        emb_efficiency = sum(emb_efficiency)/len(emb_efficiency)
+        print("emb result:", emb_purity, emb_efficiency)
+        axes[i//3][i%3].axvline(emb_purity, color='k', linestyle='dashed', linewidth=1)
+        axes[i//3][i%3].set_xlim(0, 0.03)
+        emb_ps.append(emb_purity)
+        emb_efs.append(emb_efficiency)
+
+        #apply filter
+        idx_pairs, filter_pairs = use_filter(hits, neighbors, filter_model)
+
+        filter_purity, filter_efficiency = get_filter_eff_purity(hits, truth, idx_pairs, filter_pairs)
+        print("filter result:", filter_purity, filter_efficiency)
+        filter_ps.append(filter_purity)
+        filter_efs.append(filter_efficiency)
+
+        overall_purity, overall_efficiency = get_overall_eff_purity(hits, truth, idx_pairs, filter_pairs)
+        print("overall result:", overall_purity, overall_efficiency)
+        overall_ps.append(overall_purity)
+        overall_efs.append(overall_efficiency)
+
+    plt.tight_layout()
+    plt.show()
+    return emb_ps, emb_efs, filter_ps, filter_efs, overall_ps, overall_efs
 
 # scatter plot of noise hits vs non-noise hits given percentage of noise,
 # index of neighborhood/hit and hits and truth data
@@ -776,7 +844,7 @@ def remove_tails(dist):
         std_old.append(std)
     return avg_new, avg_old, std_new, std_old
         
-    
+# get the embedding purity and efficiency for one hit
 def get_one_emb_eff_purity(index, hits, truth, emb_neighbors, only_adjacent=False):
     vol = hits[['volume_id', 'layer_id']].values.T
     hit = hits.iloc[index]
@@ -803,6 +871,7 @@ def get_one_emb_eff_purity(index, hits, truth, emb_neighbors, only_adjacent=Fals
     return purity, efficiency
 
 
+# get the average embedding purity and efficiency
 def get_emb_eff_purity(hits, truth, emb_neighbors, only_adjacent=False):
     n_iter = len(hits)
     purity = []
@@ -815,6 +884,64 @@ def get_emb_eff_purity(hits, truth, emb_neighbors, only_adjacent=False):
 
     return purity, efficiency
     
+
+# use filter model to get original pairs and filtered pairs
+def use_filter(hits, neighbors, filter_model):
+    vol = hits[['volume_id', 'layer_id']].values.T
+
+    batch_size = 64
+    num_workers = 12 if DEVICE=='cuda' else 0
+    dataset = EdgeData(hits[feature_names].values, vol, neighbors)
+    loader = DataLoader(dataset,
+                        batch_size = batch_size,
+                        num_workers = num_workers,
+                        collate_fn = my_collate)
+    # apply filter model
+    idx_pairs, scores = predict_pairs(loader, filter_model, batch_size)
+    filter_pairs, _ = apply_filter(idx_pairs, scores, 0.95)
+    filter_pairs = [(pair[0], pair[1]) for pair in filter_pairs]
+    return idx_pairs, filter_pairs
+
+# get filter efficiency and purity
+def get_filter_eff_purity(hits, truth, idx_pairs, fiter_pairs):
+    # get true pairs
+    true_pairs = []
+    truth_np = np.array(truth.values)
     
+    with torch.autograd.no_grad():
+        for i, pair in tqdm(enumerate(idx_pairs)):
+            hit_a = truth_np[pair[0], 1]
+            hit_b = truth_np[pair[1], 1]
+            if hit_a != 0 and hit_a == hit_b: #compare particle id
+                true_pairs.append((pair[0], pair[1]))
+    
+    # calculate efficiency and purity
+    true_pairs_set = frozenset(true_pairs)
+    n_true_pairs = sum(map(lambda n : n in true_pairs_set, filter_pairs))
+    purity = n_true_pairs / len(filter_pairs)
+    efficiency = n_true_pairs / len(true_pairs)
+    return purity, efficiency
+
+# get overall efficiency and purity
+def get_overall_eff_purity(hits, truth, idx_pairs, filter_pairs):
+    vol = hits[['volume_id', 'layer_id']].values.T
+    # get true pairs from original dataset
+    true_pairs = []
+    for pid in tqdm(truth['particle_id'].unique()):
+        if pid == 0: continue
+        seed_hits = hits[truth['particle_id']==pid].index.values.astype(int)
+        for i in seed_hits:
+            hit = hits.iloc[i]
+            true_neighbors = filter_one_neighborhood(hit['volume_id'], hit['layer_id'], seed_hits, vol[0], vol[1])
+            true_pairs += [(i, n) for n in true_neighbors]
+    
+    # calculate efficiency and purity
+    true_pairs_set = frozenset(true_pairs)
+    n_true_pairs = sum(map(lambda n : n in true_pairs_set, filter_pairs))
+    purity = n_true_pairs / len(filter_pairs)
+    efficiency = n_true_pairs / len(true_pairs)
+    return purity, efficiency
+
+
 
         
