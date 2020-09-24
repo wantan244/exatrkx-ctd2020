@@ -2,5 +2,8 @@
 *pycache*
 *~
 *_mine.yaml*
-.ipynb_checkpoints/*
+.ipynb_checkpoints
 *.pyc
+myconfig.yaml
+trackml/
+__pycache__
